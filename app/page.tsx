@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TermsModal } from "../components/TermsModal";
+import { LaydownInspectionModal } from '../components/LaydownInspectionModal';
+import { ClipboardList } from 'lucide-react';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -21,7 +23,9 @@ import {
   ExternalLink,
   AlertOctagon,
   FileCheck,
-  QrCode
+  QrCode,
+  Cpu,
+  Globe2
 } from 'lucide-react';
 
 interface Discrepancy {
@@ -32,8 +36,30 @@ interface Discrepancy {
   message: string;
 }
 
+interface MTCAuditData {
+  isMtcDetected: boolean;
+  detectedStandard?: string;
+  specimen: {
+    heatNo?: string;
+    grade?: string;
+    yieldStrengthMpa?: number;
+    tensileStrengthMpa?: number;
+    elongationPercent?: number;
+    carbonPercent?: number;
+    cev?: number;
+  };
+  parity: {
+    standardEvaluated: string;
+    targetStandardCode: string;
+    sqmMandatory: boolean;
+    mechanicalStatus: 'PASS' | 'FAIL' | 'NOT_APPLICABLE';
+    chemicalStatus: 'PASS' | 'FAIL' | 'NOT_APPLICABLE';
+  };
+}
+
 interface AuditData {
   consignmentId: string;
+  targetBenchmark?: string;
   audit: {
     metadata: {
       shipper: string;
@@ -57,6 +83,7 @@ interface AuditData {
       conformityRoute: string;
       parityStatus: string;
     };
+    mtcAudit?: MTCAuditData;
     discrepancies?: Discrepancy[];
     auditStatus?: 'PASS' | 'WARNINGS_DETECTED' | 'CRITICAL_DISCREPANCY';
     items: Array<{
@@ -109,11 +136,20 @@ interface LedgerEntry {
   created_at: string;
 }
 
+const CORRIDOR_OPTIONS = [
+  { key: 'SASO_2831_API_5L_X42M', label: 'KSA SASO 2831 / API 5L PSL2 X42M (Line Pipe)', minYield: 290, maxYield: 495, minTensile: 415, maxC: 0.22, maxCev: 0.43 },
+  { key: 'GBT_9711_L290M', label: 'CN GB/T 9711-2017 L290M (PSL2 Equiv)', minYield: 290, maxYield: 495, minTensile: 415, maxC: 0.22, maxCev: 0.42 },
+  { key: 'GBT_1591_Q355B', label: 'CN GB/T 1591-2018 Q355B (Structural Plate)', minYield: 355, maxYield: null, minTensile: 470, maxC: 0.20, maxCev: 0.45 },
+  { key: 'ASTM_A572_GR50', label: 'US/KSA ASTM A572 Gr 50 (Structural Shapes)', minYield: 345, maxYield: null, minTensile: 450, maxC: 0.23, maxCev: 0.47 },
+];
+
 export default function TradePreflightDashboard() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [auditResult, setAuditResult] = useState<AuditData | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [selectedBenchmark, setSelectedBenchmark] = useState<string>('SASO_2831_API_5L_X42M');
+  const [mriModalOpen, setMriModalOpen] = useState(false);
 
   // ZATCA Modal State
   const [zatcaModalOpen, setZatcaModalOpen] = useState(false);
@@ -154,12 +190,13 @@ export default function TradePreflightDashboard() {
     fetchLedger();
   }, []);
 
-  const handleUpload = async (targetFile: File) => {
+  const handleUpload = async (targetFile: File, benchmarkKey: string = selectedBenchmark) => {
     setLoading(true);
     setFile(targetFile);
 
     const formData = new FormData();
     formData.append('file', targetFile);
+    formData.append('benchmarkKey', benchmarkKey);
 
     try {
       const res = await fetch('http://localhost:4000/v1/audit/packing-list', {
@@ -175,6 +212,13 @@ export default function TradePreflightDashboard() {
       alert('Error auditing document. Ensure the backend engine is running on port 4000.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBenchmarkChange = (newKey: string) => {
+    setSelectedBenchmark(newKey);
+    if (file) {
+      handleUpload(file, newKey);
     }
   };
 
@@ -282,6 +326,8 @@ export default function TradePreflightDashboard() {
 
   const currentAuditStatus = auditResult?.audit?.auditStatus || 'PASS';
   const currentDiscrepancies = auditResult?.audit?.discrepancies || [];
+  const mtcData = auditResult?.audit?.mtcAudit;
+  const activeBenchmarkSpec = CORRIDOR_OPTIONS.find(c => c.key === selectedBenchmark) || CORRIDOR_OPTIONS[0];
 
   return (
     <div className="min-h-screen bg-obsidian text-zinc-200 font-mono p-6">
@@ -295,7 +341,7 @@ export default function TradePreflightDashboard() {
             </h1>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            HEADLESS PREFLIGHT AUDIT // UNIVERSAL MILL MANIFEST PARITY &bull; SABER &bull; SASO &bull; FASAH &bull; ZATCA PHASE-2
+            HEADLESS PREFLIGHT AUDIT // UNIVERSAL MILL MANIFEST PARITY &bull; MTC EXTRACTOR &bull; SABER &bull; SASO &bull; FASAH &bull; ZATCA PHASE-2
           </p>
         </div>
         <div className="text-xs text-zinc-300 bg-surface px-3 py-1.5 border border-borderDark rounded flex items-center gap-3">
@@ -307,16 +353,37 @@ export default function TradePreflightDashboard() {
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Dropzone & Consignment Card */}
+        {/* Left Column: Dropzone, Corridor Selector & Consignment Card */}
         <div className="lg:col-span-5 flex flex-col gap-6">
+          {/* Corridor Benchmark Picker */}
+          <div className="bg-carbon border border-borderDark p-3.5 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5 text-xs text-zinc-300 font-bold uppercase tracking-wider">
+                <Globe2 className="w-3.5 h-3.5 text-cyanHud" />
+                <span>Trade Corridor Benchmark</span>
+              </div>
+              <span className="text-[10px] text-zinc-500 font-mono">PARITY MATRIX v1.4</span>
+            </div>
+            <select
+              value={selectedBenchmark}
+              onChange={(e) => handleBenchmarkChange(e.target.value)}
+              className="w-full bg-obsidian border border-borderDark text-emeraldHud text-xs p-2 rounded focus:outline-none focus:border-emeraldHud font-mono cursor-pointer"
+            >
+              {CORRIDOR_OPTIONS.map(opt => (
+                <option key={opt.key} value={opt.key} className="bg-obsidian text-zinc-200">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
             onDragOver={handleDrag}
             onDrop={handleDrop}
-            className={`border-2 border-dashed p-8 rounded-lg text-center transition-all cursor-pointer bg-carbon ${
-              dragActive ? 'border-emeraldHud bg-surface' : 'border-borderDark hover:border-zinc-400'
-            }`}
+            className={`border-2 border-dashed p-8 rounded-lg text-center transition-all cursor-pointer bg-carbon ${dragActive ? 'border-emeraldHud bg-surface' : 'border-borderDark hover:border-zinc-400'
+              }`}
             onClick={() => document.getElementById('file-input')?.click()}
           >
             <input
@@ -328,10 +395,10 @@ export default function TradePreflightDashboard() {
             />
             <UploadCloud className="w-10 h-10 mx-auto text-emeraldHud mb-3" />
             <h2 className="text-sm font-semibold text-zinc-100 uppercase tracking-wider">
-              {loading ? 'Executing Dynamic Document Audit...' : 'Drop Supplier Packing List (PDF)'}
+              {loading ? 'Executing Dynamic Document Audit...' : 'Drop Supplier Packing List / MTC (PDF)'}
             </h2>
             <p className="text-xs text-zinc-400 mt-1">
-              Supports Universal Mill Layouts, Heat-Trace Auditing, and Rigging Limits
+              Supports Universal Mill Layouts, MTC Metallurgy, Heat-Trace Auditing, and Rigging Limits
             </p>
             {file && <p className="text-xs text-cyanHud mt-3 underline font-medium">{file.name}</p>}
           </div>
@@ -366,7 +433,7 @@ export default function TradePreflightDashboard() {
               </div>
 
               {/* Action Toolbar */}
-              <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="pt-2 grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <a
                   href={`http://localhost:4000/v1/consignment/${auditResult.consignmentId}/saber-csv`}
                   className="flex items-center justify-center gap-1.5 bg-emeraldHud/10 border border-emeraldHud/50 hover:bg-emeraldHud/20 text-emeraldHud text-xs py-2 px-2 rounded font-semibold transition"
@@ -405,6 +472,16 @@ export default function TradePreflightDashboard() {
                   FASAH BAYAN
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => setMriModalOpen(true)}
+                  className="flex items-center justify-center gap-1.5 bg-amberHud/15 border border-amberHud/50 hover:bg-amberHud/25 text-amberHud text-xs py-2 px-2 rounded font-semibold transition"
+                  title="Open Site Laydown & Material Receiving Inspection (MRI) Mode"
+                >
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  MRI YARD
+                </button>
+
                 <a
                   href={`http://localhost:4000/v1/consignment/${auditResult.consignmentId}/zatca-payload`}
                   target="_blank"
@@ -426,13 +503,12 @@ export default function TradePreflightDashboard() {
             <>
               {/* Status Banner */}
               <div
-                className={`p-4 rounded-lg border flex items-center justify-between font-mono ${
-                  currentAuditStatus === 'CRITICAL_DISCREPANCY'
+                className={`p-4 rounded-lg border flex items-center justify-between font-mono ${currentAuditStatus === 'CRITICAL_DISCREPANCY'
                     ? 'bg-red-950/30 border-red-500/50 text-red-400'
                     : currentAuditStatus === 'WARNINGS_DETECTED'
-                    ? 'bg-amberHud/10 border-amberHud/50 text-amberHud'
-                    : 'bg-emeraldHud/10 border-emeraldHud/50 text-emeraldHud'
-                }`}
+                      ? 'bg-amberHud/10 border-amberHud/50 text-amberHud'
+                      : 'bg-emeraldHud/10 border-emeraldHud/50 text-emeraldHud'
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   {currentAuditStatus === 'CRITICAL_DISCREPANCY' ? (
@@ -448,7 +524,7 @@ export default function TradePreflightDashboard() {
                     </div>
                     <div className="text-[11px] text-zinc-300 mt-0.5">
                       {currentDiscrepancies.length === 0
-                        ? 'All cargo units, heat traces, and lift envelopes passed validation.'
+                        ? 'All cargo units, MTC metallurgy, heat traces, and lift envelopes passed validation.'
                         : `${currentDiscrepancies.length} anomaly flag(s) identified in supplier manifest.`}
                     </div>
                   </div>
@@ -485,6 +561,92 @@ export default function TradePreflightDashboard() {
                   </span>
                 </div>
               </div>
+
+              {/* MTC Metallurgical Parity Card */}
+              {mtcData && mtcData.isMtcDetected && (
+                <div className="bg-carbon border border-borderDark p-5 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between border-b border-borderDark/60 pb-2">
+                    <div className="flex items-center gap-2 text-cyanHud text-xs font-bold tracking-wider">
+                      <Cpu className="w-4 h-4" />
+                      MTC METALLURGICAL TEST PARITY AUDIT
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${mtcData.parity.mechanicalStatus === 'PASS' && mtcData.parity.chemicalStatus === 'PASS'
+                        ? 'bg-emeraldHud/10 border-emeraldHud text-emeraldHud'
+                        : 'bg-red-950/30 border-red-500 text-red-400'
+                      }`}>
+                      {mtcData.parity.mechanicalStatus === 'PASS' && mtcData.parity.chemicalStatus === 'PASS'
+                        ? 'METALLURGY CONFORMS'
+                        : 'METALLURGY FLAGGED'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    {/* YIELD */}
+                    <div className="bg-obsidian border border-borderDark/80 p-2.5 rounded">
+                      <span className="text-[10px] text-zinc-400 block">YIELD (ReH)</span>
+                      <span className={`font-bold ${(mtcData.specimen.yieldStrengthMpa || 0) < activeBenchmarkSpec.minYield ||
+                          (activeBenchmarkSpec.maxYield && (mtcData.specimen.yieldStrengthMpa || 0) > activeBenchmarkSpec.maxYield)
+                          ? 'text-red-400'
+                          : 'text-zinc-100'
+                        }`}>
+                        {mtcData.specimen.yieldStrengthMpa ? `${mtcData.specimen.yieldStrengthMpa} MPa` : 'N/A'}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 block">
+                        Min: {activeBenchmarkSpec.minYield} MPa {activeBenchmarkSpec.maxYield ? `| Max: ${activeBenchmarkSpec.maxYield}` : ''}
+                      </span>
+                    </div>
+
+                    {/* TENSILE */}
+                    <div className="bg-obsidian border border-borderDark/80 p-2.5 rounded">
+                      <span className="text-[10px] text-zinc-400 block">TENSILE (Rm)</span>
+                      <span className={`font-bold ${(mtcData.specimen.tensileStrengthMpa || 0) < activeBenchmarkSpec.minTensile
+                          ? 'text-red-400'
+                          : 'text-zinc-100'
+                        }`}>
+                        {mtcData.specimen.tensileStrengthMpa ? `${mtcData.specimen.tensileStrengthMpa} MPa` : 'N/A'}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 block">Min: {activeBenchmarkSpec.minTensile} MPa</span>
+                    </div>
+
+                    {/* CARBON */}
+                    <div className="bg-obsidian border border-borderDark/80 p-2.5 rounded">
+                      <span className="text-[10px] text-zinc-400 block">CARBON (C%)</span>
+                      <span className={`font-bold ${(mtcData.specimen.carbonPercent || 0) > activeBenchmarkSpec.maxC
+                          ? 'text-red-400'
+                          : 'text-zinc-100'
+                        }`}>
+                        {mtcData.specimen.carbonPercent ? `${mtcData.specimen.carbonPercent}%` : 'N/A'}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 block">Max: {activeBenchmarkSpec.maxC}%</span>
+                    </div>
+
+                    {/* CEV */}
+                    <div className="bg-obsidian border border-borderDark/80 p-2.5 rounded">
+                      <span className="text-[10px] text-zinc-400 block">CARBON EQUIV (CEV)</span>
+                      <span className={`font-bold ${(mtcData.specimen.cev || 0) > activeBenchmarkSpec.maxCev
+                          ? 'text-red-400'
+                          : 'text-zinc-100'
+                        }`}>
+                        {mtcData.specimen.cev ? mtcData.specimen.cev : 'N/A'}
+                      </span>
+                      <span className="text-[9px] text-zinc-500 block">Max: {activeBenchmarkSpec.maxCev}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-zinc-400 flex flex-wrap items-center justify-between pt-1 border-t border-borderDark/40 gap-2">
+                    <div>
+                      <span>BENCHMARK: </span>
+                      <span className="text-zinc-200 font-semibold">{mtcData.parity.targetStandardCode || activeBenchmarkSpec.label}</span>
+                      {mtcData.detectedStandard && (
+                        <span className="text-zinc-400 text-[10px] ml-2">
+                          (Mill Declared: <span className="text-cyanHud font-medium">{mtcData.detectedStandard}</span>)
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-amberHud font-semibold">SQM (SASO QUALITY MARK): MANDATORY</span>
+                  </div>
+                </div>
+              )}
 
               {/* SASO & Customs Conformity */}
               <div className="bg-carbon border border-borderDark p-5 rounded-lg">
@@ -543,7 +705,7 @@ export default function TradePreflightDashboard() {
                 Awaiting Document Ingestion
               </p>
               <p className="text-[11px] text-zinc-500 mt-1">
-                Upload any mill packing list to execute dynamic OCR and anomaly checks.
+                Upload any mill packing list or MTC to execute dynamic OCR and anomaly checks.
               </p>
             </div>
           )}
@@ -580,9 +742,8 @@ export default function TradePreflightDashboard() {
                 {auditResult.audit.items.map((item, i) => (
                   <tr
                     key={i}
-                    className={`hover:bg-surface/50 font-mono transition-colors ${
-                      item.hasError ? 'bg-red-950/20' : ''
-                    }`}
+                    className={`hover:bg-surface/50 font-mono transition-colors ${item.hasError ? 'bg-red-950/20' : ''
+                      }`}
                   >
                     <td className="py-2 px-3.5 text-zinc-500">{i + 1}</td>
                     <td className="py-2 px-3.5 font-semibold">
@@ -669,9 +830,7 @@ export default function TradePreflightDashboard() {
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* ZATCA Phase-2 Modal with Scannable QR Matrix & TLV Inspector             */}
-      {/* ========================================================================= */}
+      {/* ZATCA Phase-2 Modal with Scannable QR Matrix & TLV Inspector */}
       {zatcaModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="w-full max-w-3xl bg-carbon border border-borderDark rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
@@ -695,11 +854,10 @@ export default function TradePreflightDashboard() {
               <button
                 type="button"
                 onClick={() => setActiveZatcaTab('telemetry')}
-                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${
-                  activeZatcaTab === 'telemetry'
+                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${activeZatcaTab === 'telemetry'
                     ? 'border-emeraldHud text-emeraldHud bg-surface/50'
                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
+                  }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 GATE TELEMETRY
@@ -712,11 +870,10 @@ export default function TradePreflightDashboard() {
                     fetchRawZatcaPayload(auditResult.consignmentId);
                   }
                 }}
-                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${
-                  activeZatcaTab === 'json'
+                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${activeZatcaTab === 'json'
                     ? 'border-cyanHud text-cyanHud bg-surface/50'
                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
+                  }`}
               >
                 <FileCode className="w-3.5 h-3.5" />
                 RAW UBL-2.1 JSON
@@ -926,9 +1083,7 @@ export default function TradePreflightDashboard() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* FASAH Unified Declaration Gateway Modal (Bayan)                           */}
-      {/* ========================================================================= */}
+      {/* FASAH Unified Declaration Gateway Modal (Bayan) */}
       {fasahModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="w-full max-w-3xl bg-carbon border border-borderDark rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
@@ -952,11 +1107,10 @@ export default function TradePreflightDashboard() {
               <button
                 type="button"
                 onClick={() => setActiveFasahTab('bayan')}
-                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${
-                  activeFasahTab === 'bayan'
+                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${activeFasahTab === 'bayan'
                     ? 'border-blue-400 text-blue-400 bg-surface/50'
                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
+                  }`}
               >
                 <FileCheck className="w-3.5 h-3.5" />
                 BAYAN SUMMARY
@@ -964,11 +1118,10 @@ export default function TradePreflightDashboard() {
               <button
                 type="button"
                 onClick={() => setActiveFasahTab('json')}
-                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${
-                  activeFasahTab === 'json'
+                className={`px-5 py-2.5 font-semibold transition border-b-2 flex items-center gap-2 ${activeFasahTab === 'json'
                     ? 'border-cyanHud text-cyanHud bg-surface/50'
                     : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
+                  }`}
               >
                 <FileCode className="w-3.5 h-3.5" />
                 FASAH EDI / JSON
@@ -1072,7 +1225,7 @@ export default function TradePreflightDashboard() {
                 onClick={() => setFasahModalOpen(false)}
                 className="px-4 py-2 border border-borderDark text-xs text-zinc-400 hover:text-white rounded transition"
               >
-Close
+                Close
               </button>
               <button
                 type="button"
@@ -1085,7 +1238,17 @@ Close
           </div>
         </div>
       )}
-
+      {auditResult && (
+        <LaydownInspectionModal
+          isOpen={mriModalOpen}
+          onClose={() => setMriModalOpen(false)}
+          consignmentId={auditResult.consignmentId}
+          reportNo={auditResult.audit.metadata.reportNo}
+          items={auditResult.audit.items}
+          totalWeightKg={auditResult.audit.physicalSummary.totalWeightKg}
+          onInspectionUpdated={fetchLedger}
+        />
+      )}
       {/* --- FOOTER & REGULATORY TERMS --- */}
       <footer className="mt-8 pt-4 border-t border-borderDark flex flex-col sm:flex-row items-center justify-between text-[11px] text-zinc-500 gap-2">
         <div className="flex items-center gap-2">
