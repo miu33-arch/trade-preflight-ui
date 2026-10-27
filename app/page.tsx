@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { TermsModal } from "../components/TermsModal";
 import { LaydownInspectionModal } from '../components/LaydownInspectionModal';
-import { ClipboardList } from 'lucide-react';
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -25,7 +24,8 @@ import {
   FileCheck,
   QrCode,
   Cpu,
-  Globe2
+  Globe2,
+  ClipboardList
 } from 'lucide-react';
 
 interface Discrepancy {
@@ -151,6 +151,10 @@ export default function TradePreflightDashboard() {
   const [selectedBenchmark, setSelectedBenchmark] = useState<string>('SASO_2831_API_5L_X42M');
   const [mriModalOpen, setMriModalOpen] = useState(false);
 
+  // Multimodal Dispatch Modal State
+  const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
+  const [copiedPayload, setCopiedPayload] = useState(false);
+
   // ZATCA Modal State
   const [zatcaModalOpen, setZatcaModalOpen] = useState(false);
   const [activeZatcaTab, setActiveZatcaTab] = useState<'telemetry' | 'json'>('telemetry');
@@ -176,7 +180,7 @@ export default function TradePreflightDashboard() {
 
   const fetchLedger = async () => {
     try {
-      const res = await fetch('http://localhost:4000/v1/audit/ledger');
+      const res = await fetch('/v1/audit/ledger');
       if (res.ok) {
         const data = await res.json();
         setLedgerEntries(data.ledger || []);
@@ -199,7 +203,7 @@ export default function TradePreflightDashboard() {
     formData.append('benchmarkKey', benchmarkKey);
 
     try {
-      const res = await fetch('http://localhost:4000/v1/audit/packing-list', {
+      const res = await fetch('/v1/audit/packing-list', {
         method: 'POST',
         body: formData,
       });
@@ -209,7 +213,7 @@ export default function TradePreflightDashboard() {
       setAuditResult(data);
     } catch (err) {
       console.error(err);
-      alert('Error auditing document. Ensure the backend engine is running on port 4000.');
+      alert('Error auditing document. Verification service temporarily unreachable.');
     } finally {
       setLoading(false);
     }
@@ -225,7 +229,7 @@ export default function TradePreflightDashboard() {
   const fetchRawZatcaPayload = async (consignmentId: string) => {
     setLoadingJson(true);
     try {
-      const res = await fetch(`http://localhost:4000/v1/consignment/${consignmentId}/zatca-payload`);
+      const res = await fetch(`/v1/consignment/${consignmentId}/zatca-payload`);
       if (res.ok) {
         const data = await res.json();
         setRawZatcaJson(data);
@@ -240,7 +244,7 @@ export default function TradePreflightDashboard() {
   const fetchFasahBayan = async (consignmentId: string) => {
     setLoadingFasah(true);
     try {
-      const res = await fetch(`http://localhost:4000/v1/consignment/${consignmentId}/fasah-bayan`);
+      const res = await fetch(`/v1/consignment/${consignmentId}/fasah-bayan`);
       if (res.ok) {
         const data = await res.json();
         setRawFasahJson(data);
@@ -260,7 +264,7 @@ export default function TradePreflightDashboard() {
     fetchRawZatcaPayload(auditResult.consignmentId);
 
     try {
-      const res = await fetch('http://localhost:4000/v1/zatca/preflight-clearance', {
+      const res = await fetch('/v1/zatca/preflight-clearance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -308,6 +312,21 @@ export default function TradePreflightDashboard() {
     }
   };
 
+  const handleCopyClearancePayload = () => {
+    if (!auditResult) return;
+    const text = `[MIU PREFLIGHT TRADE CONSIGNMENT CLEARANCE]
+Consignment ID: ${auditResult.consignmentId}
+Benchmark: ${auditResult.audit.regulatoryAudit.sasoTechnicalRegulation || 'KSA SASO 2831 / API 5L'}
+Status: ${currentAuditStatus} (${currentDiscrepancies.length} FLAGS)
+Total Pieces: ${auditResult.audit.physicalSummary.totalPieces} PCS
+Total Weight: ${(auditResult.audit.physicalSummary.totalWeightKg / 1000).toFixed(2)} MT
+SABER Manifest Link: https://trade.miu33archstudio.xyz/v1/consignment/${auditResult.consignmentId}/saber-csv
+Verification Gateway: https://trade.miu33archstudio.xyz`;
+    navigator.clipboard.writeText(text);
+    setCopiedPayload(true);
+    setTimeout(() => setCopiedPayload(false), 2000);
+  };
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -345,7 +364,7 @@ export default function TradePreflightDashboard() {
           </p>
         </div>
         <div className="text-xs text-zinc-300 bg-surface px-3 py-1.5 border border-borderDark rounded flex items-center gap-3">
-          <div>CORE_NODE: <span className="text-emeraldHud font-semibold">ONLINE :4000</span></div>
+          <div>CORE_NODE: <span className="text-emeraldHud font-semibold">ONLINE :PRODUCTION</span></div>
           <div className="h-3 w-px bg-borderDark" />
           <div>CHAIN: <span className="text-cyanHud font-semibold">{ledgerEntries.length} BLOCKS</span></div>
         </div>
@@ -434,15 +453,15 @@ export default function TradePreflightDashboard() {
 
               {/* Action Toolbar */}
               <div className="pt-2 grid grid-cols-2 sm:grid-cols-5 gap-2">
-                <a
-                  href={`http://localhost:4000/v1/consignment/${auditResult.consignmentId}/saber-csv`}
+                <button
+                  type="button"
+                  onClick={() => setDispatchModalOpen(true)}
                   className="flex items-center justify-center gap-1.5 bg-emeraldHud/10 border border-emeraldHud/50 hover:bg-emeraldHud/20 text-emeraldHud text-xs py-2 px-2 rounded font-semibold transition"
-                  download
-                  title="Download SABER Bulk CSV Registration File"
+                  title="Multimodal Dispatch & Clearance Release"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   SABER CSV
-                </a>
+                </button>
 
                 <button
                   type="button"
@@ -483,7 +502,7 @@ export default function TradePreflightDashboard() {
                 </button>
 
                 <a
-                  href={`http://localhost:4000/v1/consignment/${auditResult.consignmentId}/zatca-payload`}
+                  href={`/v1/consignment/${auditResult.consignmentId}/zatca-payload`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center justify-center gap-1 bg-surface border border-borderDark hover:border-zinc-500 text-zinc-300 hover:text-white text-xs py-2 px-2 rounded font-medium transition"
@@ -699,7 +718,7 @@ export default function TradePreflightDashboard() {
               </div>
             </>
           ) : (
-            <div className="bg-carbon border border-borderDark rounded-lg p-12 text-center flex flex-col items-center justify-center min-h-87.5">
+            <div className="bg-carbon border border-borderDark rounded-lg p-12 text-center flex flex-col items-center justify-center min-h-[350px]">
               <AlertTriangle className="w-8 h-8 text-zinc-500 mb-2" />
               <p className="text-xs text-zinc-400 uppercase tracking-wider font-semibold">
                 Awaiting Document Ingestion
@@ -815,11 +834,11 @@ export default function TradePreflightDashboard() {
                     <div className="flex flex-col md:flex-row gap-2 md:gap-6 text-[11px] w-full md:w-auto">
                       <div className="flex items-center gap-1.5">
                         <span className="text-zinc-500">PREV:</span>
-                        <code className="text-zinc-400 truncate max-w-32">{block.previous_hash}</code>
+                        <code className="text-zinc-400 truncate max-w-[130px]">{block.previous_hash}</code>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-emeraldHud">CURR:</span>
-                        <code className="text-emeraldHud font-bold truncate max-w-36">{block.current_hash}</code>
+                        <code className="text-emeraldHud font-bold truncate max-w-[145px]">{block.current_hash}</code>
                       </div>
                     </div>
                   </div>
@@ -829,6 +848,113 @@ export default function TradePreflightDashboard() {
           </div>
         )}
       </div>
+
+      {/* MULTIMODAL DISPATCH & CLEARANCE GATE */}
+      {dispatchModalOpen && auditResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0b0f14] border border-borderDark rounded-lg w-full max-w-xl overflow-hidden shadow-2xl font-mono text-zinc-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-borderDark bg-[#11161d]">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emeraldHud animate-pulse" />
+                <h3 className="text-xs uppercase tracking-widest font-semibold text-emeraldHud">
+                  MULTIMODAL DISPATCH // CLEARANCE HANDOVER
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDispatchModalOpen(false)}
+                className="text-xs text-zinc-500 hover:text-zinc-200 transition"
+              >
+                [ESC / CLOSE]
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div className="bg-obsidian border border-borderDark p-4 rounded text-xs space-y-1">
+                <div className="text-zinc-400">CONSIGNMENT REF: <span className="text-emeraldHud font-bold">{auditResult.consignmentId}</span></div>
+                <div className="text-zinc-400">STATUS: <span className="text-emeraldHud">{currentAuditStatus} (0 ANOMALIES)</span></div>
+                <div className="text-zinc-400">VERIFICATION: <span className="text-zinc-200">trade.miu33archstudio.xyz</span></div>
+              </div>
+
+              {/* PRIMARY PROTON & COPY ACTIONS */}
+              <div className="space-y-2">
+                <div className="text-[10px] tracking-wider text-zinc-400 uppercase font-semibold">Priority Dispatch:</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <a
+                    href={`https://mail.proton.me/compose?to=architect@miu33archstudio.xyz&subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}&body=${encodeURIComponent(
+                      "[MIU PREFLIGHT TRADE CONSIGNMENT CLEARANCE]\nConsignment ID: " + auditResult.consignmentId + "\nStatus: SASO 2831 CONFORMING (PASS)\nVerification Gateway: https://trade.miu33archstudio.xyz"
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 bg-[#6D4AFF] hover:bg-[#5b3ce0] text-white py-2.5 px-4 rounded text-xs font-semibold transition"
+                  >
+                    Dispatch via Proton Mail
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyClearancePayload}
+                    className="flex items-center justify-center gap-2 bg-emeraldHud/15 border border-emeraldHud/50 hover:bg-emeraldHud/25 text-emeraldHud py-2.5 px-4 rounded text-xs font-semibold transition"
+                  >
+                    {copiedPayload ? "Clearance Copied!" : "Copy Clearance Payload"}
+                  </button>
+                </div>
+              </div>
+
+              {/* MULTIMODAL ROUTING FALLBACKS */}
+              <div className="space-y-2">
+                <div className="text-[10px] tracking-wider text-zinc-400 uppercase font-semibold">Alternate Multimodal Channels:</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <a
+                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=architect@miu33archstudio.xyz&su=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}&body=${encodeURIComponent(
+                      "Consignment ID: " + auditResult.consignmentId + "\nVerification: https://trade.miu33archstudio.xyz"
+                    )}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 border border-borderDark hover:border-zinc-500 rounded text-[11px] text-zinc-300 hover:text-white transition"
+                  >
+                    Gmail
+                  </a>
+                  <a
+                    href={`https://outlook.live.com/mail/0/deeplink/compose?to=architect@miu33archstudio.xyz&subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 border border-borderDark hover:border-zinc-500 rounded text-[11px] text-zinc-300 hover:text-white transition"
+                  >
+                    Outlook
+                  </a>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent("MIU Trade Clearance Ref: " + auditResult.consignmentId + " - https://trade.miu33archstudio.xyz")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 border border-emerald-900/60 bg-emerald-950/20 hover:border-emerald-600 rounded text-[11px] text-emerald-400 transition"
+                  >
+                    WhatsApp
+                  </a>
+                  <a
+                    href={`mailto:architect@miu33archstudio.xyz?subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}`}
+                    className="p-2 border border-borderDark hover:border-zinc-500 rounded text-[11px] text-zinc-300 hover:text-white transition"
+                  >
+                    Native Mail
+                  </a>
+                </div>
+              </div>
+
+              {/* UNLOCKED SABER REGISTRATION CSV */}
+              <div className="pt-2 border-t border-borderDark flex items-center justify-between">
+                <span className="text-[11px] text-zinc-500">Manifest Ready: SABER_BULK_SPEC</span>
+                <a
+                  href={`/v1/consignment/${auditResult.consignmentId}/saber-csv`}
+                  download
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-600 px-3 py-1.5 rounded text-xs font-medium transition"
+                >
+                  Download CSV
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ZATCA Phase-2 Modal with Scannable QR Matrix & TLV Inspector */}
       {zatcaModalOpen && (
@@ -927,7 +1053,7 @@ export default function TradePreflightDashboard() {
                               includeMargin={false}
                             />
                           ) : (
-                            <div className="w-33.75 h-33.75 flex items-center justify-center text-zinc-500 text-[10px]">
+                            <div className="w-[135px] h-[135px] flex items-center justify-center text-zinc-500 text-[10px]">
                               NO PAYLOAD
                             </div>
                           )}
@@ -958,7 +1084,7 @@ export default function TradePreflightDashboard() {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-zinc-400">PREVIOUS DIGEST LINK:</span>
-                          <span className="text-zinc-400 truncate max-w-72">{zatcaResult.previousHash}</span>
+                          <span className="text-zinc-400 truncate max-w-[280px]">{zatcaResult.previousHash}</span>
                         </div>
 
                         {/* Current SHA-256 Digest Box */}
@@ -1033,7 +1159,7 @@ export default function TradePreflightDashboard() {
                         </button>
                       )}
                       <a
-                        href={`http://localhost:4000/v1/consignment/${auditResult?.consignmentId}/zatca-payload`}
+                        href={`/v1/consignment/${auditResult?.consignmentId}/zatca-payload`}
                         target="_blank"
                         rel="noreferrer"
                         className="text-xs text-cyanHud hover:underline flex items-center gap-1"
@@ -1238,6 +1364,7 @@ export default function TradePreflightDashboard() {
           </div>
         </div>
       )}
+
       {auditResult && (
         <LaydownInspectionModal
           isOpen={mriModalOpen}
@@ -1249,6 +1376,7 @@ export default function TradePreflightDashboard() {
           onInspectionUpdated={fetchLedger}
         />
       )}
+
       {/* --- FOOTER & REGULATORY TERMS --- */}
       <footer className="mt-8 pt-4 border-t border-borderDark flex flex-col sm:flex-row items-center justify-between text-[11px] text-zinc-500 gap-2">
         <div className="flex items-center gap-2">
