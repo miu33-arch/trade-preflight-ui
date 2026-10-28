@@ -36,15 +36,7 @@ interface LaydownInspectionModalProps {
 }
 
 const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://localhost:4000';
-    }
-    if (window.location.hostname === 'trade.miu33archstudio.xyz') {
-      return 'https://api.miu33archstudio.xyz';
-    }
-  }
-  return 'https://api.miu33archstudio.xyz';
+  return '';
 };
 
 export function LaydownInspectionModal({
