@@ -144,10 +144,15 @@ const CORRIDOR_OPTIONS = [
 ];
 
 const getApiBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location.hostname === 'trade.miu33archstudio.xyz') {
-    return 'https://api.miu33archstudio.xyz';
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:4000';
+    }
+    if (window.location.hostname === 'trade.miu33archstudio.xyz') {
+      return 'https://api.miu33archstudio.xyz';
+    }
   }
-  return ''; // Falls back to relative path for local development proxying
+  return 'https://api.miu33archstudio.xyz';
 };
 
 export default function TradePreflightDashboard() {
@@ -460,15 +465,15 @@ Verification Gateway: https://trade.miu33archstudio.xyz`;
 
               {/* Action Toolbar */}
               <div className="pt-2 grid grid-cols-2 sm:grid-cols-5 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDispatchModalOpen(true)}
+                <a
+                  href={`${getApiBaseUrl()}/v1/consignment/${auditResult.consignmentId}/saber-csv`}
+                  download
                   className="flex items-center justify-center gap-1.5 bg-emeraldHud/10 border border-emeraldHud/50 hover:bg-emeraldHud/20 text-emeraldHud text-xs py-2 px-2 rounded font-semibold transition"
-                  title="Multimodal Dispatch & Clearance Release"
+                  title="Direct download bulk manifest for SABER portal"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   SABER CSV
-                </button>
+                </a>
 
                 <button
                   type="button"
@@ -519,6 +524,19 @@ Verification Gateway: https://trade.miu33archstudio.xyz`;
                   JSON
                 </a>
               </div>
+
+              {/* Dedicated Handover / Dispatch Bar with Slow Neon Glow */}
+              <button
+                type="button"
+                onClick={() => setDispatchModalOpen(true)}
+                className="w-full mt-2 relative overflow-hidden flex items-center justify-center gap-2.5 bg-[#160d29] border border-purple-500/60 hover:border-purple-400 text-purple-200 text-xs py-2.5 px-3 rounded font-bold tracking-widest transition-all duration-700 shadow-[0_0_15px_rgba(168,85,247,0.22)] hover:shadow-[0_0_25px_rgba(168,85,247,0.5)] animate-pulse uppercase"
+                style={{ animationDuration: '3.5s' }}
+                title="Dispatch clearance dossier via Email or WhatsApp"
+              >
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping shrink-0" />
+                <Globe2 className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                <span className="tracking-widest">DISPATCH DOSSIER // MULTIMODAL HANDOVER</span>
+              </button>
             </div>
           )}
         </div>
@@ -883,19 +901,19 @@ Verification Gateway: https://trade.miu33archstudio.xyz`;
                 <div className="text-zinc-400">VERIFICATION: <span className="text-zinc-200">trade.miu33archstudio.xyz</span></div>
               </div>
 
-              {/* PRIMARY PROTON & COPY ACTIONS */}
+                            {/* PRIMARY WHATSAPP & COPY ACTIONS */}
               <div className="space-y-2">
-                <div className="text-[10px] tracking-wider text-zinc-400 uppercase font-semibold">Priority Dispatch:</div>
+                <div className="text-[10px] tracking-wider text-zinc-400 uppercase font-semibold">Instant Dispatch:</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <a
-                    href={`https://mail.proton.me/compose?to=architect@miu33archstudio.xyz&subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}&body=${encodeURIComponent(
-                      "[MIU PREFLIGHT TRADE CONSIGNMENT CLEARANCE]\nConsignment ID: " + auditResult.consignmentId + "\nStatus: SASO 2831 CONFORMING (PASS)\nVerification Gateway: https://trade.miu33archstudio.xyz"
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      "[MIU PREFLIGHT TRADE CONSIGNMENT CLEARANCE]\nConsignment ID: " + auditResult.consignmentId + "\nStatus: " + currentAuditStatus + "\nVerification Gateway: https://trade.miu33archstudio.xyz"
                     )}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-center gap-2 bg-[#6D4AFF] hover:bg-[#5b3ce0] text-white py-2.5 px-4 rounded text-xs font-semibold transition"
+                    className="flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba5a] text-black py-2.5 px-4 rounded text-xs font-bold transition shadow-sm"
                   >
-                    Dispatch via Proton Mail
+                    <span>Dispatch via WhatsApp</span>
                   </a>
 
                   <button
@@ -908,41 +926,35 @@ Verification Gateway: https://trade.miu33archstudio.xyz`;
                 </div>
               </div>
 
-              {/* MULTIMODAL ROUTING FALLBACKS */}
+              {/* EMAIL CHANNELS */}
               <div className="space-y-2">
-                <div className="text-[10px] tracking-wider text-zinc-400 uppercase font-semibold">Alternate Multimodal Channels:</div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="text-[10px] tracking-wider text-zinc-400 uppercase font-semibold">Email Routing:</div>
+                <div className="grid grid-cols-3 gap-2 text-center">
                   <a
-                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=architect@miu33archstudio.xyz&su=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}&body=${encodeURIComponent(
-                      "Consignment ID: " + auditResult.consignmentId + "\nVerification: https://trade.miu33archstudio.xyz"
+                    href={`https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}&body=${encodeURIComponent(
+                      "Consignment ID: " + auditResult.consignmentId + "\nStatus: " + currentAuditStatus + "\nVerification: https://trade.miu33archstudio.xyz"
                     )}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 border border-borderDark hover:border-zinc-500 rounded text-[11px] text-zinc-300 hover:text-white transition"
+                    className="p-2 border border-borderDark hover:border-zinc-400 bg-obsidian rounded text-[11px] text-zinc-200 transition font-medium"
                   >
                     Gmail
                   </a>
                   <a
-                    href={`https://outlook.live.com/mail/0/deeplink/compose?to=architect@miu33archstudio.xyz&subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}`}
+                    href={`https://outlook.live.com/mail/0/deeplink/compose?subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 border border-borderDark hover:border-zinc-500 rounded text-[11px] text-zinc-300 hover:text-white transition"
+                    className="p-2 border border-borderDark hover:border-zinc-400 bg-obsidian rounded text-[11px] text-zinc-200 transition font-medium"
                   >
                     Outlook
                   </a>
                   <a
-                    href={`https://wa.me/?text=${encodeURIComponent("MIU Trade Clearance Ref: " + auditResult.consignmentId + " - https://trade.miu33archstudio.xyz")}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-2 border border-emerald-900/60 bg-emerald-950/20 hover:border-emerald-600 rounded text-[11px] text-emerald-400 transition"
+                    href={`mailto:?subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}&body=${encodeURIComponent(
+                      "Consignment ID: " + auditResult.consignmentId + "\nStatus: " + currentAuditStatus + "\nVerification: https://trade.miu33archstudio.xyz"
+                    )}`}
+                    className="p-2 border border-borderDark hover:border-zinc-400 bg-obsidian rounded text-[11px] text-zinc-200 transition font-medium"
                   >
-                    WhatsApp
-                  </a>
-                  <a
-                    href={`mailto:architect@miu33archstudio.xyz?subject=${encodeURIComponent("MIU Trade Clearance // " + auditResult.consignmentId)}`}
-                    className="p-2 border border-borderDark hover:border-zinc-500 rounded text-[11px] text-zinc-300 hover:text-white transition"
-                  >
-                    Native Mail
+                    Default Mail
                   </a>
                 </div>
               </div>

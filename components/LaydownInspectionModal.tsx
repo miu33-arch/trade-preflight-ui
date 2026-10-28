@@ -83,7 +83,7 @@ export function LaydownInspectionModal({
 
       if (res.ok) {
         setItems((prev) =>
-          prev.map((item) =>
+          prev.map((item, index) =>
             item.itemNo === itemNo
               ? { ...item, receiving_status: status, inspection_notes: notes ?? item.inspection_notes }
               : item
@@ -224,11 +224,11 @@ export function LaydownInspectionModal({
               </tr>
             </thead>
             <tbody className="divide-y divide-borderDark/40 font-mono">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const status = item.receiving_status || 'PENDING';
                 return (
                   <tr
-                    key={item.itemNo}
+                    key={`${item.itemNo}-${item.pipeNo || item.itemNo}`}
                     className={`hover:bg-surface/60 transition ${
                       status === 'DAMAGED'
                         ? 'bg-red-950/20'
