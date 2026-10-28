@@ -35,6 +35,18 @@ interface LaydownInspectionModalProps {
   onInspectionUpdated?: () => void;
 }
 
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:4000';
+    }
+    if (window.location.hostname === 'trade.miu33archstudio.xyz') {
+      return 'https://api.miu33archstudio.xyz';
+    }
+  }
+  return 'https://api.miu33archstudio.xyz';
+};
+
 export function LaydownInspectionModal({
   isOpen,
   onClose,
@@ -73,7 +85,7 @@ export function LaydownInspectionModal({
   ) => {
     try {
       const res = await fetch(
-        `http://localhost:4000/v1/consignment/${consignmentId}/item/${itemNo}/inspect`,
+        `${getApiBaseUrl()}/v1/consignment/${consignmentId}/item/${itemNo}/inspect`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -83,7 +95,7 @@ export function LaydownInspectionModal({
 
       if (res.ok) {
         setItems((prev) =>
-          prev.map((item, index) =>
+          prev.map((item) =>
             item.itemNo === itemNo
               ? { ...item, receiving_status: status, inspection_notes: notes ?? item.inspection_notes }
               : item
@@ -108,7 +120,7 @@ export function LaydownInspectionModal({
     setIsSigningOff(true);
     try {
       const res = await fetch(
-        `http://localhost:4000/v1/consignment/${consignmentId}/mri-signoff`,
+        `${getApiBaseUrl()}/v1/consignment/${consignmentId}/mri-signoff`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -224,7 +236,7 @@ export function LaydownInspectionModal({
               </tr>
             </thead>
             <tbody className="divide-y divide-borderDark/40 font-mono">
-              {items.map((item, index) => {
+              {items.map((item) => {
                 const status = item.receiving_status || 'PENDING';
                 return (
                   <tr
@@ -363,7 +375,7 @@ export function LaydownInspectionModal({
             {/* View/Print OS&D Report Dossier */}
             {(damagedCount > 0 || shortCount > 0 || signoffResult) && (
               <a
-                href={`http://localhost:4000/v1/consignment/${consignmentId}/osd-print`}
+                href={`${getApiBaseUrl()}/v1/consignment/${consignmentId}/osd-print`}
                 target="_blank"
                 rel="noreferrer"
                 className="px-3 py-2 bg-red-950/40 border border-red-500/60 text-red-400 text-xs font-semibold rounded hover:bg-red-900/50 transition flex items-center gap-1.5"
