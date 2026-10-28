@@ -35,8 +35,14 @@ interface LaydownInspectionModalProps {
   onInspectionUpdated?: () => void;
 }
 
-const getApiBaseUrl = () => {
-  return '';
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:4000';
+    }
+    return 'https://api.miu33archstudio.xyz';
+  }
+  return 'https://api.miu33archstudio.xyz';
 };
 
 export function LaydownInspectionModal({
@@ -76,8 +82,9 @@ export function LaydownInspectionModal({
     notes?: string
   ) => {
     try {
+      const baseUrl = getApiBaseUrl();
       const res = await fetch(
-        `${getApiBaseUrl()}/v1/consignment/${consignmentId}/item/${itemNo}/inspect`,
+        `${baseUrl}/v1/consignment/${consignmentId}/item/${itemNo}/inspect`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -93,6 +100,9 @@ export function LaydownInspectionModal({
               : item
           )
         );
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error('API Error updating item status:', errData);
       }
     } catch (err) {
       console.error('Failed to update item inspection status:', err);
@@ -111,8 +121,9 @@ export function LaydownInspectionModal({
   const handleExecuteSignoff = async () => {
     setIsSigningOff(true);
     try {
+      const baseUrl = getApiBaseUrl();
       const res = await fetch(
-        `${getApiBaseUrl()}/v1/consignment/${consignmentId}/mri-signoff`,
+        `${baseUrl}/v1/consignment/${consignmentId}/mri-signoff`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -128,7 +139,7 @@ export function LaydownInspectionModal({
         setSignoffResult(data);
         if (onInspectionUpdated) onInspectionUpdated();
       } else {
-        alert(`Sign-off error: ${data.error}`);
+        alert(`Sign-off error: ${data.error || 'Server rejected sign-off.'}`);
       }
     } catch (err) {
       console.error('Sign-off failed:', err);
@@ -205,7 +216,7 @@ export function LaydownInspectionModal({
               <button
                 type="button"
                 onClick={handleBatchAcceptPending}
-                className="px-2.5 py-1 bg-emeraldHud/10 border border-emeraldHud/40 text-emeraldHud rounded text-xs hover:bg-emeraldHud/20 transition flex items-center gap-1.5"
+                className="px-2.5 py-1 bg-emeraldHud/10 border border-emeraldHud/40 text-emeraldHud rounded text-xs hover:bg-emeraldHud/20 transition flex items-center gap-1.5 cursor-pointer"
               >
                 <Check className="w-3 h-3" />
                 ACCEPT ALL REMAINING ({pendingCount})
@@ -277,7 +288,7 @@ export function LaydownInspectionModal({
                           type="button"
                           onClick={() => handleUpdateStatus(item.itemNo, 'ACCEPTED')}
                           title="Accept Pipe / Conforming"
-                          className="p-1 rounded bg-emeraldHud/10 hover:bg-emeraldHud/25 border border-emeraldHud/50 text-emeraldHud transition"
+                          className="p-1 rounded bg-emeraldHud/10 hover:bg-emeraldHud/25 border border-emeraldHud/50 text-emeraldHud transition cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                         </button>
@@ -288,7 +299,7 @@ export function LaydownInspectionModal({
                             setTempNote(item.inspection_notes || '');
                           }}
                           title="Flag Damaged / Issue NCR"
-                          className="p-1 rounded bg-red-950/30 hover:bg-red-950/50 border border-red-500/50 text-red-400 transition"
+                          className="p-1 rounded bg-red-950/30 hover:bg-red-950/50 border border-red-500/50 text-red-400 transition cursor-pointer"
                         >
                           <AlertTriangle className="w-3.5 h-3.5" />
                         </button>
@@ -296,7 +307,7 @@ export function LaydownInspectionModal({
                           type="button"
                           onClick={() => handleUpdateStatus(item.itemNo, 'SHORT')}
                           title="Flag Short / Missing"
-                          className="p-1 rounded bg-amberHud/10 hover:bg-amberHud/25 border border-amberHud/50 text-amberHud transition"
+                          className="p-1 rounded bg-amberHud/10 hover:bg-amberHud/25 border border-amberHud/50 text-amberHud transition cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
                         </button>
@@ -325,7 +336,7 @@ export function LaydownInspectionModal({
                   handleUpdateStatus(activeNoteItem, 'DAMAGED', tempNote);
                   setActiveNoteItem(null);
                 }}
-                className="px-3 py-1 bg-red-950/60 border border-red-500 text-red-400 text-xs font-bold rounded hover:bg-red-900 transition flex items-center gap-1"
+                className="px-3 py-1 bg-red-950/60 border border-red-500 text-red-400 text-xs font-bold rounded hover:bg-red-900 transition flex items-center gap-1 cursor-pointer"
               >
                 <Save className="w-3 h-3" />
                 SAVE NCR
@@ -333,7 +344,7 @@ export function LaydownInspectionModal({
               <button
                 type="button"
                 onClick={() => setActiveNoteItem(null)}
-                className="px-2 py-1 text-zinc-500 hover:text-white text-xs"
+                className="px-2 py-1 text-zinc-500 hover:text-white text-xs cursor-pointer"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -381,7 +392,7 @@ export function LaydownInspectionModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-borderDark text-xs text-zinc-400 hover:text-white rounded transition"
+              className="px-4 py-2 border border-borderDark text-xs text-zinc-400 hover:text-white rounded transition cursor-pointer"
             >
               Close
             </button>
@@ -389,7 +400,7 @@ export function LaydownInspectionModal({
               type="button"
               onClick={handleExecuteSignoff}
               disabled={isSigningOff || pendingCount > 0}
-              className="px-4 py-2 bg-emeraldHud text-obsidian text-xs font-bold rounded hover:bg-emerald-400 disabled:opacity-40 transition flex items-center gap-1.5"
+              className="px-4 py-2 bg-emeraldHud text-obsidian text-xs font-bold rounded hover:bg-emerald-400 disabled:opacity-40 transition flex items-center gap-1.5 cursor-pointer"
             >
               <FileCheck className="w-3.5 h-3.5" />
               {isSigningOff ? 'Signing off...' : 'Sign Off MRI & Complete Handover'}
